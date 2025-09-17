@@ -189,23 +189,76 @@ def main():
             filtered_df = df
 
         for idx, row in filtered_df.iterrows():
-            col1, col2 = st.columns([10, 1])
+            # Check if this entry is in edit mode
+            edit_key = f"edit_{idx}"
+            is_editing = st.session_state.get(edit_key, False)
 
-            with col1:
-                st.write(f"**#{idx + 1}** | **{row['Business']}** - {row['Name']}")
-                st.write(f"📞 {row['Number']} | ✉️ {row['Email']}")
-                st.write(f"📍 {row['Location']} | 🏢 {row['Industry']}")
-                if pd.notna(row.get('Call Notes')) and row.get('Call Notes'):
-                    st.write(f"📝 **Notes:** {row['Call Notes']}")
-                st.caption(f"Added: {row['Date Added']}")
+            if is_editing:
+                # Edit mode
+                with st.form(f"edit_form_{idx}"):
+                    st.subheader(f"Editing Contact #{idx + 1}")
 
-            with col2:
-                if st.button("🗑️", key=f"delete_{idx}", help="Delete this contact"):
-                    df_original = load_data()
-                    df_original = df_original.drop(df_original.index[idx]).reset_index(drop=True)
-                    save_data(df_original)
-                    st.success("Contact deleted!")
-                    st.rerun()
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        edit_business = st.text_input("Business Name", value=row['Business'])
+                        edit_name = st.text_input("Contact Name", value=row['Name'])
+                        edit_number = st.text_input("Phone Number", value=row['Number'])
+
+                    with col2:
+                        edit_email = st.text_input("Email", value=row['Email'])
+                        edit_location = st.text_input("Location", value=row['Location'])
+                        edit_industry = st.text_input("Industry", value=row['Industry'])
+
+                    edit_notes = st.text_area("Call Notes", value=row.get('Call Notes', ''))
+
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        save_changes = st.form_submit_button("💾 Save Changes")
+                    with col2:
+                        cancel_edit = st.form_submit_button("❌ Cancel")
+
+                    if save_changes:
+                        # Update the contact
+                        df_original = load_data()
+                        df_original.loc[idx, 'Business'] = edit_business
+                        df_original.loc[idx, 'Name'] = edit_name
+                        df_original.loc[idx, 'Number'] = edit_number
+                        df_original.loc[idx, 'Email'] = edit_email
+                        df_original.loc[idx, 'Location'] = edit_location
+                        df_original.loc[idx, 'Industry'] = edit_industry
+                        df_original.loc[idx, 'Call Notes'] = edit_notes
+
+                        save_data(df_original)
+                        st.session_state[edit_key] = False
+                        st.success("Contact updated!")
+                        st.rerun()
+
+                    if cancel_edit:
+                        st.session_state[edit_key] = False
+                        st.rerun()
+            else:
+                # Display mode
+                col1, col2 = st.columns([8, 2])
+
+                with col1:
+                    st.write(f"**#{idx + 1}** | **{row['Business']}** - {row['Name']}")
+                    st.write(f"📞 {row['Number']} | ✉️ {row['Email']}")
+                    st.write(f"📍 {row['Location']} | 🏢 {row['Industry']}")
+                    if pd.notna(row.get('Call Notes')) and row.get('Call Notes'):
+                        st.write(f"📝 **Notes:** {row['Call Notes']}")
+                    st.caption(f"Added: {row['Date Added']}")
+
+                with col2:
+                    if st.button("✏️", key=f"edit_btn_{idx}", help="Edit this contact"):
+                        st.session_state[edit_key] = True
+                        st.rerun()
+
+                    if st.button("🗑️", key=f"delete_{idx}", help="Delete this contact"):
+                        df_original = load_data()
+                        df_original = df_original.drop(df_original.index[idx]).reset_index(drop=True)
+                        save_data(df_original)
+                        st.success("Contact deleted!")
+                        st.rerun()
 
             st.divider()
 
