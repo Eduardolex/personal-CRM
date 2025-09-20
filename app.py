@@ -7,13 +7,28 @@ from datetime import datetime
 st.set_page_config(page_title="Personal CRM", page_icon="📊", layout="wide")
 
 DATA_FILE = "contacts_data.json"
+LISTS_FILE = "lists_data.json"
+
+def load_lists():
+    if os.path.exists(LISTS_FILE):
+        with open(LISTS_FILE, 'r') as f:
+            return json.load(f)
+    return {"Default": {"name": "Default", "color": "#1f77b4", "description": "Default contact list"}}
+
+def save_lists(lists_data):
+    with open(LISTS_FILE, 'w') as f:
+        json.dump(lists_data, f, indent=2)
 
 def load_data():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, 'r') as f:
             data = json.load(f)
-        return pd.DataFrame(data)
-    return pd.DataFrame(columns=['Business', 'Name', 'Number', 'Email', 'Location', 'Industry', 'Call Notes', 'Date Added'])
+        df = pd.DataFrame(data)
+        # Add List column if it doesn't exist
+        if 'List' not in df.columns:
+            df['List'] = 'Default'
+        return df
+    return pd.DataFrame(columns=['Business', 'Name', 'Number', 'Email', 'Location', 'Industry', 'Call Notes', 'Date Added', 'List'])
 
 def save_data(df):
     data = df.to_dict('records')
@@ -22,18 +37,116 @@ def save_data(df):
 
 def main():
     st.title("📊 Personal CRM")
-    st.markdown("---")
 
-    # Initialize session state for form key
+    # Initialize session state
     if 'form_key' not in st.session_state:
         st.session_state.form_key = 0
+    if 'current_list' not in st.session_state:
+        st.session_state.current_list = 'Default'
 
     df = load_data()
+    lists_data = load_lists()
+
+    # List management section
+    st.subheader("📋 Manage Lists")
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        # Current list selector
+        list_options = list(lists_data.keys())
+        if st.session_state.current_list not in list_options:
+            st.session_state.current_list = 'Default'
+
+        selected_list = st.selectbox(
+            "Select Active List:",
+            list_options,
+            index=list_options.index(st.session_state.current_list),
+            key="list_selector"
+        )
+        st.session_state.current_list = selected_list
+
+        # Display current list info
+        current_list_info = lists_data[selected_list]
+        st.markdown(f"**{current_list_info['name']}** - {current_list_info.get('description', '')}")
+
+    with col2:
+        if st.button("➕ New List"):
+            st.session_state.show_new_list_form = True
+        if st.button("⚙️ Edit Lists"):
+            st.session_state.show_edit_lists = True
+
+    # New list form
+    if st.session_state.get('show_new_list_form', False):
+        with st.form("new_list_form"):
+            st.subheader("Create New List")
+            new_list_name = st.text_input("List Name")
+            new_list_description = st.text_input("Description (optional)")
+            new_list_color = st.color_picker("List Color", "#1f77b4")
+
+            col1, col2 = st.columns(2)
+            with col1:
+                create_list = st.form_submit_button("Create List")
+            with col2:
+                cancel_list = st.form_submit_button("Cancel")
+
+            if create_list and new_list_name:
+                if new_list_name not in lists_data:
+                    lists_data[new_list_name] = {
+                        "name": new_list_name,
+                        "description": new_list_description,
+                        "color": new_list_color
+                    }
+                    save_lists(lists_data)
+                    st.session_state.current_list = new_list_name
+                    st.session_state.show_new_list_form = False
+                    st.success(f"List '{new_list_name}' created!")
+                    st.rerun()
+                else:
+                    st.error("A list with this name already exists!")
+
+            if cancel_list:
+                st.session_state.show_new_list_form = False
+                st.rerun()
+
+    # Edit lists form
+    if st.session_state.get('show_edit_lists', False):
+        st.subheader("Edit Lists")
+        for list_name, list_info in lists_data.items():
+            if list_name != 'Default':  # Don't allow deleting default list
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    st.write(f"**{list_info['name']}** - {list_info.get('description', '')}")
+                with col2:
+                    if st.button(f"🗑️", key=f"delete_list_{list_name}"):
+                        # Move contacts from deleted list to Default
+                        df.loc[df['List'] == list_name, 'List'] = 'Default'
+                        save_data(df)
+                        # Delete the list
+                        del lists_data[list_name]
+                        save_lists(lists_data)
+                        if st.session_state.current_list == list_name:
+                            st.session_state.current_list = 'Default'
+                        st.success(f"List '{list_name}' deleted and contacts moved to Default!")
+                        st.rerun()
+
+        if st.button("Done Editing"):
+            st.session_state.show_edit_lists = False
+            st.rerun()
+
+    st.markdown("---")
 
     with st.sidebar:
         st.header("Log New Call")
 
         with st.form(f"contact_form_{st.session_state.form_key}", enter_to_submit=False):
+            # List selection for new contact
+            contact_list = st.selectbox(
+                "Add to List:",
+                list(lists_data.keys()),
+                index=list(lists_data.keys()).index(st.session_state.current_list),
+                help="Select which list to add this contact to"
+            )
+
             business = st.text_input("Business Name")
             name = st.text_input("Contact Name")
             number = st.text_input("Phone Number")
@@ -146,16 +259,17 @@ def main():
 
             submitted = st.form_submit_button("Log Call")
 
-            if submitted and business and name:
+            if submitted and (business or name or number or email or call_notes):
                 new_contact = {
-                    'Business': business,
-                    'Name': name,
-                    'Number': number,
-                    'Email': email,
-                    'Location': location,
-                    'Industry': industry,
-                    'Call Notes': call_notes,
-                    'Date Added': datetime.now().strftime("%Y-%m-%d %H:%M")
+                    'Business': business or '',
+                    'Name': name or '',
+                    'Number': number or '',
+                    'Email': email or '',
+                    'Location': location or '',
+                    'Industry': industry or '',
+                    'Call Notes': call_notes or '',
+                    'Date Added': datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    'List': contact_list
                 }
 
                 if df.empty:
@@ -168,7 +282,7 @@ def main():
                 st.success("Contact added successfully!")
                 st.rerun()
 
-    st.header("Cold call Database")
+    st.header(f"Cold call Database - {lists_data[st.session_state.current_list]['name']}")
 
     if not df.empty:
         col1, col2 = st.columns([3, 1])
@@ -180,13 +294,16 @@ def main():
                 st.success("All data cleared!")
                 st.rerun()
 
+        # Filter by current list first
+        list_filtered_df = df[df['List'] == st.session_state.current_list] if not df.empty else df
+
         search_term = st.text_input("🔍 Search contacts...", placeholder="Search by business, name, email, or industry")
 
         if search_term:
-            mask = df.astype(str).apply(lambda x: x.str.contains(search_term, case=False, na=False)).any(axis=1)
-            filtered_df = df[mask]
+            mask = list_filtered_df.astype(str).apply(lambda x: x.str.contains(search_term, case=False, na=False)).any(axis=1)
+            filtered_df = list_filtered_df[mask]
         else:
-            filtered_df = df
+            filtered_df = list_filtered_df
 
         for idx, row in filtered_df.iterrows():
             # Check if this entry is in edit mode
@@ -197,6 +314,10 @@ def main():
                 # Edit mode
                 with st.form(f"edit_form_{idx}"):
                     st.subheader(f"Editing Contact #{idx + 1}")
+
+                    # List selection for editing contact
+                    edit_contact_list = st.selectbox("List:", list(lists_data.keys()),
+                                                    index=list(lists_data.keys()).index(row.get('List', 'Default')))
 
                     col1, col2 = st.columns(2)
                     with col1:
@@ -227,6 +348,7 @@ def main():
                         df_original.loc[idx, 'Location'] = edit_location
                         df_original.loc[idx, 'Industry'] = edit_industry
                         df_original.loc[idx, 'Call Notes'] = edit_notes
+                        df_original.loc[idx, 'List'] = edit_contact_list
 
                         save_data(df_original)
                         st.session_state[edit_key] = False
@@ -241,6 +363,11 @@ def main():
                 col1, col2 = st.columns([8, 2])
 
                 with col1:
+                    # Display list badge with color
+                    contact_list = row.get('List', 'Default')
+                    list_color = lists_data.get(contact_list, {}).get('color', '#1f77b4')
+                    st.markdown(f'<span style="background-color:{list_color}; color:white; padding:2px 8px; border-radius:12px; font-size:12px;">{contact_list}</span>', unsafe_allow_html=True)
+
                     st.write(f"**#{idx + 1}** | **{row['Business']}** - {row['Name']}")
                     st.write(f"📞 {row['Number']} | ✉️ {row['Email']}")
                     st.write(f"📍 {row['Location']} | 🏢 {row['Industry']}")

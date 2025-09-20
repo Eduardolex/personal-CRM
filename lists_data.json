@@ -1,0 +1,22 @@
+{
+  "Default": {
+    "name": "Default",
+    "color": "#1f77b4",
+    "description": "Default contact list"
+  },
+  "health": {
+    "name": "health",
+    "description": "idk",
+    "color": "#1f77b4"
+  },
+  "landscaping": {
+    "name": "landscaping",
+    "description": "idk bruh",
+    "color": "#54595c"
+  },
+  "2nd day": {
+    "name": "2nd day",
+    "description": "2nd day of cold calling",
+    "color": "#1f77b4"
+  }
+}
