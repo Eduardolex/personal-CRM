@@ -18,5 +18,15 @@
     "name": "2nd day",
     "description": "2nd day of cold calling",
     "color": "#1f77b4"
+  },
+  "3rd day": {
+    "name": "3rd day",
+    "description": "",
+    "color": "#c50d4a"
+  },
+  "Plumbers_LA": {
+    "name": "Plumbers_LA",
+    "description": "",
+    "color": "#9aabb7"
   }
 }
